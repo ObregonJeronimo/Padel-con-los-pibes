@@ -26,7 +26,7 @@ export default function Home() {
     <div className="page">
       <div className="header animate-fade">
         <h1>Pádel con<br />los Pibes</h1>
-        <p className="subtitle">🏓 Torneos &amp; Sorteos</p>
+        <p className="subtitle">🏓 TORNEOS EN EL TERRÓN (GRACIAS LUKI😝)</p>
       </div>
 
       <div className="flex flex-col gap-16 mt-24">
