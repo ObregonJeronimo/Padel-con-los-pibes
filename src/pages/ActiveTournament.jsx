@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getTournament, updateTournament, finishTournament } from '../utils/firebaseOps';
-import { createSmartDuos, getNextMatch6, getNextMatch8 } from '../utils/tournament';
+import { createSmartDuos, pairingToString, getNextMatch6, getNextMatch8 } from '../utils/tournament';
 
 function Leaderboard({ scores, small = false }) {
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
@@ -121,15 +121,14 @@ function RoundEndView({ scores, onContinue, onFinish, roundNumber }) {
   );
 }
 
-// Serialize duos/results to plain objects for Firestore
 function serializeDuos(duos) {
-  return duos.map(d => ({ id: d.id, players: [...d.players], name: d.name }));
+  return duos.map(d => ({ id: d.id, players: [d.players[0], d.players[1]], name: d.name }));
 }
 
 function serializeResults(results) {
   return results.map(r => ({
-    winner: { id: r.winner.id, players: [...r.winner.players], name: r.winner.name },
-    loser: { id: r.loser.id, players: [...r.loser.players], name: r.loser.name }
+    winner: { id: r.winner.id, players: [r.winner.players[0], r.winner.players[1]], name: r.winner.name },
+    loser: { id: r.loser.id, players: [r.loser.players[0], r.loser.players[1]], name: r.loser.name }
   }));
 }
 
@@ -205,14 +204,15 @@ export default function ActiveTournament() {
     setError(null);
     try {
       const plainDuos = serializeDuos(duos);
-      const newPairings = duos.map(d => [...d.players]);
+      // Store pairings as flat strings "player1|player2" - NO nested arrays for Firestore
+      const newPairingStrings = duos.map(d => pairingToString(d.players));
       await updateTournament(id, {
         currentRound: { duos: plainDuos, matchResults: [], phase: 'playing' },
-        previousPairings: [...(tournament.previousPairings || []), ...newPairings]
+        previousPairings: [...(tournament.previousPairings || []), ...newPairingStrings]
       });
       setTournament(prev => ({
         ...prev,
-        previousPairings: [...(prev.previousPairings || []), ...newPairings]
+        previousPairings: [...(prev.previousPairings || []), ...newPairingStrings]
       }));
       setPhase('playing');
       const nextMatch = tournament.playerCount === 6
@@ -221,7 +221,7 @@ export default function ActiveTournament() {
       setCurrentMatch(nextMatch);
     } catch (e) {
       console.error('Confirm sorteo error:', e);
-      setError('Error al guardar. Revisá la conexión o las reglas de Firestore.');
+      setError('Error al guardar: ' + e.message);
     }
     setSaving(false);
   }
@@ -263,7 +263,7 @@ export default function ActiveTournament() {
       }
     } catch (e) {
       console.error('Winner error:', e);
-      setError('Error al guardar resultado.');
+      setError('Error al guardar resultado: ' + e.message);
     }
     setSaving(false);
   }
