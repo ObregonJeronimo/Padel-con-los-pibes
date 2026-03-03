@@ -22,35 +22,12 @@ export function createDuos(players) {
   return duos;
 }
 
-// Generate all matches for 6-player tournament (3 duos, round-robin)
-export function generateMatches6(duos) {
-  return [
-    { id: 'm1', duo1: duos[0], duo2: duos[1], waiting: duos[2], winner: null, phase: 1 },
-  ];
-}
-
-// Generate bracket for 8-player tournament (4 duos)
-export function generateMatches8(duos) {
-  return [
-    { id: 'm1', duo1: duos[0], duo2: duos[2], phase: 1, winner: null },
-    { id: 'm2', duo1: duos[1], duo2: duos[3], phase: 1, winner: null },
-  ];
-}
-
-// Get all possible pairings between duos (round-robin)
-export function getAllPairings(duos) {
-  const pairings = [];
-  for (let i = 0; i < duos.length; i++) {
-    for (let j = i + 1; j < duos.length; j++) {
-      pairings.push({ duo1: duos[i], duo2: duos[j] });
-    }
-  }
-  return pairings;
-}
-
 // Try to create duos where players haven't played together before
+// previousPairings is an array of STRINGS like "player1|player2" (Firestore compatible, no nested arrays)
 export function createSmartDuos(players, previousPairings = []) {
   const pairingSet = new Set(previousPairings.map(p => {
+    // Support both string format "a|b" and legacy array format [a,b]
+    if (typeof p === 'string') return p.split('|').sort().join('|');
     const sorted = [...p].sort();
     return `${sorted[0]}|${sorted[1]}`;
   }));
@@ -67,20 +44,9 @@ export function createSmartDuos(players, previousPairings = []) {
   return createDuos(players);
 }
 
-// Calculate tournament schedule for 6 players (3 duos)
-export function buildTournament6Schedule(duos) {
-  return {
-    type: 6, duos, totalMatches: 3, matches: [], currentMatch: 0,
-    firstMatch: { duo1Index: 0, duo2Index: 1, waitingIndex: 2 }
-  };
-}
-
-// Calculate tournament schedule for 8 players (4 duos)
-export function buildTournament8Schedule(duos) {
-  return {
-    type: 8, duos, totalMatches: 6, matches: [], currentMatch: 0,
-    phase1: [{ duo1Index: 0, duo2Index: 2 }, { duo1Index: 1, duo2Index: 3 }]
-  };
+// Convert duo players to Firestore-safe string "player1|player2"
+export function pairingToString(players) {
+  return [...players].sort().join('|');
 }
 
 // Get next match for 6-player tournament
@@ -93,9 +59,8 @@ export function getNextMatch6(schedule, matchResults) {
   }
 
   if (played === 1) {
-    const lastResult = matchResults[0];
-    const winnerDuo = lastResult.winner;
-    const loserDuo = lastResult.loser;
+    const winnerDuo = matchResults[0].winner;
+    const loserDuo = matchResults[0].loser;
     const waitingDuo = duos[2];
     return { duo1: winnerDuo, duo2: waitingDuo, waiting: [loserDuo], matchNumber: 2 };
   }
