@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getTournament, updateTournament, finishTournament } from '../utils/firebaseOps';
-import { createDuos, createSmartDuos, getNextMatch6, getNextMatch8 } from '../utils/tournament';
+import { createSmartDuos, getNextMatch6, getNextMatch8 } from '../utils/tournament';
 
 function Leaderboard({ scores, small = false }) {
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
@@ -18,7 +18,7 @@ function Leaderboard({ scores, small = false }) {
   );
 }
 
-function MatchView({ match, onWinner, matchNumber, totalMatches }) {
+function MatchView({ match, onWinner, matchNumber, totalMatches, disabled }) {
   if (!match) return null;
   return (
     <div className="match-card active animate-scale">
@@ -29,14 +29,14 @@ function MatchView({ match, onWinner, matchNumber, totalMatches }) {
       <div className="flex flex-col gap-12 mt-16">
         <div className="text-center text-xs text-muted mb-8" style={{ letterSpacing: '2px', textTransform: 'uppercase' }}>¿Quién ganó?</div>
         <div className="flex gap-12">
-          <button className="duo-card" onClick={() => onWinner(match.duo1, match.duo2)}>
+          <button className="duo-card" onClick={() => !disabled && onWinner(match.duo1, match.duo2)} style={disabled ? {opacity:0.5} : {}}>
             <div className="player-name">{match.duo1.players[0]}</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: '2px 0' }}>&amp;</div>
             <div className="player-name">{match.duo1.players[1]}</div>
             <div style={{ marginTop: '10px', fontSize: '0.7rem', color: 'var(--green)', fontWeight: 600 }}>✓ GANÓ</div>
           </button>
           <div className="flex items-center"><span className="vs-text">VS</span></div>
-          <button className="duo-card" onClick={() => onWinner(match.duo2, match.duo1)}>
+          <button className="duo-card" onClick={() => !disabled && onWinner(match.duo2, match.duo1)} style={disabled ? {opacity:0.5} : {}}>
             <div className="player-name">{match.duo2.players[0]}</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: '2px 0' }}>&amp;</div>
             <div className="player-name">{match.duo2.players[1]}</div>
@@ -73,7 +73,7 @@ function CompletedMatch({ result, index }) {
   );
 }
 
-function SorteoView({ duos, onReshuffle, onConfirm, reshuffleCount }) {
+function SorteoView({ duos, onReshuffle, onConfirm, reshuffleCount, saving }) {
   return (
     <div className="flex flex-col gap-16 animate-scale">
       <div className="text-center">
@@ -92,11 +92,13 @@ function SorteoView({ duos, onReshuffle, onConfirm, reshuffleCount }) {
       </div>
       <div className="flex flex-col gap-12">
         {reshuffleCount < 2 && (
-          <button className="btn btn-secondary" onClick={onReshuffle}>
+          <button className="btn btn-secondary" onClick={onReshuffle} disabled={saving}>
             🔄 Volver a sortear ({2 - reshuffleCount} {2 - reshuffleCount === 1 ? 'vez' : 'veces'} más)
           </button>
         )}
-        <button className="btn btn-primary" onClick={onConfirm}>✅ Confirmar y empezar</button>
+        <button className="btn btn-primary" onClick={onConfirm} disabled={saving}>
+          {saving ? 'Guardando...' : '✅ Confirmar y empezar'}
+        </button>
       </div>
     </div>
   );
@@ -119,11 +121,25 @@ function RoundEndView({ scores, onContinue, onFinish, roundNumber }) {
   );
 }
 
+// Serialize duos/results to plain objects for Firestore
+function serializeDuos(duos) {
+  return duos.map(d => ({ id: d.id, players: [...d.players], name: d.name }));
+}
+
+function serializeResults(results) {
+  return results.map(r => ({
+    winner: { id: r.winner.id, players: [...r.winner.players], name: r.winner.name },
+    loser: { id: r.loser.id, players: [...r.loser.players], name: r.loser.name }
+  }));
+}
+
 export default function ActiveTournament() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [tournament, setTournament] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [phase, setPhase] = useState('loading');
   const [duos, setDuos] = useState([]);
   const [reshuffleCount, setReshuffleCount] = useState(0);
@@ -158,7 +174,10 @@ export default function ActiveTournament() {
         setPhase('sorteo');
         doSorteo(t);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error('Load error:', e);
+      setError('Error al cargar el torneo');
+    }
     setLoading(false);
   }, [id, navigate]);
 
@@ -182,46 +201,71 @@ export default function ActiveTournament() {
   }
 
   async function handleConfirmSorteo() {
-    const newPairings = duos.map(d => d.players);
-    await updateTournament(id, {
-      currentRound: { duos, matchResults: [], phase: 'playing' },
-      previousPairings: [...(tournament.previousPairings || []), ...newPairings]
-    });
-    setPhase('playing');
-    const nextMatch = tournament.playerCount === 6
-      ? getNextMatch6({ duos }, [])
-      : getNextMatch8({ duos }, []);
-    setCurrentMatch(nextMatch);
+    setSaving(true);
+    setError(null);
+    try {
+      const plainDuos = serializeDuos(duos);
+      const newPairings = duos.map(d => [...d.players]);
+      await updateTournament(id, {
+        currentRound: { duos: plainDuos, matchResults: [], phase: 'playing' },
+        previousPairings: [...(tournament.previousPairings || []), ...newPairings]
+      });
+      setTournament(prev => ({
+        ...prev,
+        previousPairings: [...(prev.previousPairings || []), ...newPairings]
+      }));
+      setPhase('playing');
+      const nextMatch = tournament.playerCount === 6
+        ? getNextMatch6({ duos }, [])
+        : getNextMatch8({ duos }, []);
+      setCurrentMatch(nextMatch);
+    } catch (e) {
+      console.error('Confirm sorteo error:', e);
+      setError('Error al guardar. Revisá la conexión o las reglas de Firestore.');
+    }
+    setSaving(false);
   }
 
   async function handleWinner(winnerDuo, loserDuo) {
-    const newResult = { winner: winnerDuo, loser: loserDuo };
-    const newResults = [...matchResults, newResult];
-    setMatchResults(newResults);
-    const newScores = { ...tournament.scores };
-    winnerDuo.players.forEach(p => { newScores[p] = (newScores[p] || 0) + 1; });
-    const totalMatches = tournament.playerCount === 6 ? 3 : 6;
-    const isRoundComplete = newResults.length >= totalMatches;
-    if (isRoundComplete) {
-      const roundData = { duos, matchResults: newResults, roundNumber };
-      await updateTournament(id, {
-        scores: newScores,
-        rounds: [...(tournament.rounds || []), roundData],
-        currentRound: { ...tournament.currentRound, matchResults: newResults, phase: 'round-end' }
-      });
-      setTournament(prev => ({ ...prev, scores: newScores, rounds: [...(prev.rounds || []), roundData] }));
-      setPhase('round-end');
-    } else {
-      await updateTournament(id, {
-        scores: newScores,
-        currentRound: { duos, matchResults: newResults, phase: 'playing' }
-      });
-      setTournament(prev => ({ ...prev, scores: newScores }));
-      const nextMatch = tournament.playerCount === 6
-        ? getNextMatch6({ duos }, newResults)
-        : getNextMatch8({ duos }, newResults);
-      setCurrentMatch(nextMatch);
+    setSaving(true);
+    setError(null);
+    try {
+      const newResult = { winner: winnerDuo, loser: loserDuo };
+      const newResults = [...matchResults, newResult];
+      setMatchResults(newResults);
+      const newScores = { ...tournament.scores };
+      winnerDuo.players.forEach(p => { newScores[p] = (newScores[p] || 0) + 1; });
+      const totalMatches = tournament.playerCount === 6 ? 3 : 6;
+      const isRoundComplete = newResults.length >= totalMatches;
+
+      const plainDuos = serializeDuos(duos);
+      const plainResults = serializeResults(newResults);
+
+      if (isRoundComplete) {
+        const roundData = { duos: plainDuos, matchResults: plainResults, roundNumber };
+        await updateTournament(id, {
+          scores: newScores,
+          rounds: [...(tournament.rounds || []), roundData],
+          currentRound: { duos: plainDuos, matchResults: plainResults, phase: 'round-end' }
+        });
+        setTournament(prev => ({ ...prev, scores: newScores, rounds: [...(prev.rounds || []), roundData] }));
+        setPhase('round-end');
+      } else {
+        await updateTournament(id, {
+          scores: newScores,
+          currentRound: { duos: plainDuos, matchResults: plainResults, phase: 'playing' }
+        });
+        setTournament(prev => ({ ...prev, scores: newScores }));
+        const nextMatch = tournament.playerCount === 6
+          ? getNextMatch6({ duos }, newResults)
+          : getNextMatch8({ duos }, newResults);
+        setCurrentMatch(nextMatch);
+      }
+    } catch (e) {
+      console.error('Winner error:', e);
+      setError('Error al guardar resultado.');
     }
+    setSaving(false);
   }
 
   async function handleContinue() {
@@ -229,14 +273,25 @@ export default function ActiveTournament() {
     setPhase('sorteo');
     setMatchResults([]);
     setCurrentMatch(null);
-    await updateTournament(id, { currentRound: null });
+    try {
+      await updateTournament(id, { currentRound: null });
+    } catch (e) {
+      console.error('Continue error:', e);
+    }
     doSorteo(tournament);
   }
 
   async function handleFinish() {
-    await finishTournament(id);
-    await updateTournament(id, { currentRound: null });
-    navigate(`/historial/${id}`, { replace: true });
+    setSaving(true);
+    try {
+      await finishTournament(id);
+      await updateTournament(id, { currentRound: null });
+      navigate(`/historial/${id}`, { replace: true });
+    } catch (e) {
+      console.error('Finish error:', e);
+      setError('Error al finalizar.');
+      setSaving(false);
+    }
   }
 
   if (loading) return <div className="page"><div className="loading"><div className="spinner" /></div></div>;
@@ -249,6 +304,13 @@ export default function ActiveTournament() {
         <h1>Torneo</h1>
         <p className="subtitle">{tournament.playerCount} jugadores · Ronda #{roundNumber}</p>
       </div>
+
+      {error && (
+        <div className="animate-fade" style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', marginBottom: '16px', fontSize: '0.85rem', color: 'var(--red)' }}>
+          ⚠️ {error}
+        </div>
+      )}
+
       {phase !== 'round-end' && phase !== 'sorteo' && (
         <div className="mb-24 animate-fade">
           <div className="flex items-center justify-between mb-8">
@@ -267,10 +329,10 @@ export default function ActiveTournament() {
         </div>
       )}
       {phase === 'sorteo' && duos.length > 0 && (
-        <SorteoView duos={duos} onReshuffle={handleReshuffle} onConfirm={handleConfirmSorteo} reshuffleCount={reshuffleCount} />
+        <SorteoView duos={duos} onReshuffle={handleReshuffle} onConfirm={handleConfirmSorteo} reshuffleCount={reshuffleCount} saving={saving} />
       )}
       {phase === 'playing' && currentMatch && (
-        <MatchView match={currentMatch} onWinner={handleWinner} matchNumber={matchResults.length + 1} totalMatches={totalMatches} />
+        <MatchView match={currentMatch} onWinner={handleWinner} matchNumber={matchResults.length + 1} totalMatches={totalMatches} disabled={saving} />
       )}
       {phase === 'round-end' && (
         <RoundEndView scores={tournament.scores} onContinue={handleContinue} onFinish={handleFinish} roundNumber={roundNumber} />
