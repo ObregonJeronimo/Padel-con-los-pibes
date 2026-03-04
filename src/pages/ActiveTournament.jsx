@@ -20,6 +20,7 @@ function Leaderboard({ scores, small = false }) {
 
 function MatchView({ match, onWinner, matchNumber, totalMatches, disabled }) {
   if (!match) return null;
+  const nameStyle = { fontSize: '1.15rem', fontWeight: 700, color: '#f0f0f0' };
   return (
     <div className="match-card active animate-scale">
       <div className="flex items-center justify-between mb-8">
@@ -27,18 +28,18 @@ function MatchView({ match, onWinner, matchNumber, totalMatches, disabled }) {
         {match.label && <span className="chip">{match.label}</span>}
       </div>
       <div className="flex flex-col gap-12 mt-16">
-        <div className="text-center mb-8" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--green)', letterSpacing: '2px', textTransform: 'uppercase' }}>¿QUIÉN GANÓ?</div>
+        <div className="text-center mb-8" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--green)', letterSpacing: '2px', textTransform: 'uppercase' }}>¿QUIÉN GANÓ?</div>
         <div className="flex gap-12">
           <button className="duo-card" onClick={() => !disabled && onWinner(match.duo1, match.duo2)} style={disabled ? {opacity:0.5} : {}}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo1.players[0]}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: '4px 0' }}>&amp;</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo1.players[1]}</div>
+            <div style={nameStyle}>{match.duo1.players[0]}</div>
+            <div style={{ fontSize: '0.75rem', color: '#888', margin: '4px 0' }}>&amp;</div>
+            <div style={nameStyle}>{match.duo1.players[1]}</div>
           </button>
           <div className="flex items-center"><span className="vs-text">VS</span></div>
           <button className="duo-card" onClick={() => !disabled && onWinner(match.duo2, match.duo1)} style={disabled ? {opacity:0.5} : {}}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo2.players[0]}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: '4px 0' }}>&amp;</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo2.players[1]}</div>
+            <div style={nameStyle}>{match.duo2.players[0]}</div>
+            <div style={{ fontSize: '0.75rem', color: '#888', margin: '4px 0' }}>&amp;</div>
+            <div style={nameStyle}>{match.duo2.players[1]}</div>
           </button>
         </div>
         {match.waiting && match.waiting.length > 0 && (
@@ -61,9 +62,9 @@ function CompletedMatch({ result, index, onSwap, disabled }) {
       <div className="flex items-center gap-8">
         <div className="duo-card winner" style={{ cursor: 'default', padding: '10px 12px' }}>
           <div className="text-xs" style={{ color: 'var(--green)', marginBottom: '4px' }}>🏆 Ganó</div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{result.winner.players[0]}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>&amp;</div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{result.winner.players[1]}</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f0f0f0' }}>{result.winner.players[0]}</div>
+          <div style={{ fontSize: '0.65rem', color: '#888' }}>&amp;</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f0f0f0' }}>{result.winner.players[1]}</div>
         </div>
         <span className="vs-text" style={{ fontSize: '0.9rem' }}>vs</span>
         <button
@@ -73,9 +74,9 @@ function CompletedMatch({ result, index, onSwap, disabled }) {
           title="Tocá para cambiar el ganador"
         >
           <div className="text-xs" style={{ color: 'var(--red)', marginBottom: '4px' }}>Perdió</div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{result.loser.players[0]}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>&amp;</div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{result.loser.players[1]}</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f0f0f0' }}>{result.loser.players[0]}</div>
+          <div style={{ fontSize: '0.65rem', color: '#888' }}>&amp;</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f0f0f0' }}>{result.loser.players[1]}</div>
         </button>
       </div>
     </div>
@@ -141,14 +142,11 @@ function serializeResults(results) {
   }));
 }
 
-// Recalculate all scores from scratch based on match results
 function recalcScores(baseScores, oldResults, newResults) {
   const scores = { ...baseScores };
-  // Undo old results
   oldResults.forEach(r => {
     r.winner.players.forEach(p => { scores[p] = (scores[p] || 0) - 1; });
   });
-  // Apply new results
   newResults.forEach(r => {
     r.winner.players.forEach(p => { scores[p] = (scores[p] || 0) + 1; });
   });
@@ -290,27 +288,17 @@ export default function ActiveTournament() {
     setSaving(false);
   }
 
-  // SWAP a past result: invert winner/loser, recalc scores, recalc next match
   async function handleSwapResult(matchIndex) {
     setSaving(true);
     setError(null);
     try {
       const oldResults = [...matchResults];
       const swapped = { ...oldResults[matchIndex] };
-      // Swap winner and loser
       const newResult = { winner: swapped.loser, loser: swapped.winner };
       const newResults = [...oldResults];
       newResults[matchIndex] = newResult;
 
-      // Recalc scores: undo ALL old results from this round, redo with new
-      const newScores = recalcScores(tournament.scores, oldResults, newResults);
-
-      // For 6-player: matches after the swapped one depend on who won
-      // We need to invalidate results after the swap point and recalculate flow
-      // Truncate results after the swapped match (those are now invalid)
       const truncatedResults = newResults.slice(0, matchIndex + 1);
-
-      // Recalc scores with only the truncated results
       const truncScores = recalcScores(tournament.scores, oldResults, truncatedResults);
 
       setMatchResults(truncatedResults);
