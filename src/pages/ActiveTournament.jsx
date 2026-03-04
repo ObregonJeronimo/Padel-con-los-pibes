@@ -27,20 +27,18 @@ function MatchView({ match, onWinner, matchNumber, totalMatches, disabled }) {
         {match.label && <span className="chip">{match.label}</span>}
       </div>
       <div className="flex flex-col gap-12 mt-16">
-        <div className="text-center text-xs text-muted mb-8" style={{ letterSpacing: '2px', textTransform: 'uppercase' }}>¿Quién ganó?</div>
+        <div className="text-center mb-8" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--green)', letterSpacing: '2px', textTransform: 'uppercase' }}>¿QUIÉN GANÓ?</div>
         <div className="flex gap-12">
           <button className="duo-card" onClick={() => !disabled && onWinner(match.duo1, match.duo2)} style={disabled ? {opacity:0.5} : {}}>
-            <div className="player-name">{match.duo1.players[0]}</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: '2px 0' }}>&amp;</div>
-            <div className="player-name">{match.duo1.players[1]}</div>
-            <div style={{ marginTop: '10px', fontSize: '0.7rem', color: 'var(--green)', fontWeight: 600 }}>✓ GANÓ</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo1.players[0]}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: '4px 0' }}>&amp;</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo1.players[1]}</div>
           </button>
           <div className="flex items-center"><span className="vs-text">VS</span></div>
           <button className="duo-card" onClick={() => !disabled && onWinner(match.duo2, match.duo1)} style={disabled ? {opacity:0.5} : {}}>
-            <div className="player-name">{match.duo2.players[0]}</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: '2px 0' }}>&amp;</div>
-            <div className="player-name">{match.duo2.players[1]}</div>
-            <div style={{ marginTop: '10px', fontSize: '0.7rem', color: 'var(--green)', fontWeight: 600 }}>✓ GANÓ</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo2.players[0]}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', margin: '4px 0' }}>&amp;</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{match.duo2.players[1]}</div>
           </button>
         </div>
         {match.waiting && match.waiting.length > 0 && (
@@ -53,21 +51,32 @@ function MatchView({ match, onWinner, matchNumber, totalMatches, disabled }) {
   );
 }
 
-function CompletedMatch({ result, index }) {
+function CompletedMatch({ result, index, onSwap, disabled }) {
   return (
-    <div className="match-card completed animate-fade" style={{ animationDelay: `${index * 0.05}s` }}>
+    <div className="match-card completed animate-fade" style={{ animationDelay: `${index * 0.05}s`, opacity: 1 }}>
       <div className="flex items-center justify-between mb-8">
         <span className="phase-label done">✓ Partido {index + 1}</span>
+        <span className="text-xs text-muted" style={{ opacity: 0.5 }}>tocá para corregir</span>
       </div>
-      <div className="flex items-center gap-12">
-        <div className="duo-card winner" style={{ cursor: 'default' }}>
-          <div className="text-xs" style={{ color: 'var(--green)', marginBottom: '4px' }}>🏆</div>
-          <div className="player-name" style={{ fontSize: '0.8rem' }}>{result.winner.name}</div>
+      <div className="flex items-center gap-8">
+        <div className="duo-card winner" style={{ cursor: 'default', padding: '10px 12px' }}>
+          <div className="text-xs" style={{ color: 'var(--green)', marginBottom: '4px' }}>🏆 Ganó</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{result.winner.players[0]}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>&amp;</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{result.winner.players[1]}</div>
         </div>
-        <span className="vs-text" style={{ fontSize: '1rem' }}>vs</span>
-        <div className="duo-card loser" style={{ cursor: 'default' }}>
-          <div className="player-name" style={{ fontSize: '0.8rem' }}>{result.loser.name}</div>
-        </div>
+        <span className="vs-text" style={{ fontSize: '0.9rem' }}>vs</span>
+        <button
+          className="duo-card loser"
+          onClick={() => !disabled && onSwap(index)}
+          style={{ padding: '10px 12px', opacity: 0.7, cursor: disabled ? 'not-allowed' : 'pointer' }}
+          title="Tocá para cambiar el ganador"
+        >
+          <div className="text-xs" style={{ color: 'var(--red)', marginBottom: '4px' }}>Perdió</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{result.loser.players[0]}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)' }}>&amp;</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{result.loser.players[1]}</div>
+        </button>
       </div>
     </div>
   );
@@ -130,6 +139,20 @@ function serializeResults(results) {
     winner: { id: r.winner.id, players: [r.winner.players[0], r.winner.players[1]], name: r.winner.name },
     loser: { id: r.loser.id, players: [r.loser.players[0], r.loser.players[1]], name: r.loser.name }
   }));
+}
+
+// Recalculate all scores from scratch based on match results
+function recalcScores(baseScores, oldResults, newResults) {
+  const scores = { ...baseScores };
+  // Undo old results
+  oldResults.forEach(r => {
+    r.winner.players.forEach(p => { scores[p] = (scores[p] || 0) - 1; });
+  });
+  // Apply new results
+  newResults.forEach(r => {
+    r.winner.players.forEach(p => { scores[p] = (scores[p] || 0) + 1; });
+  });
+  return scores;
 }
 
 export default function ActiveTournament() {
@@ -204,7 +227,6 @@ export default function ActiveTournament() {
     setError(null);
     try {
       const plainDuos = serializeDuos(duos);
-      // Store pairings as flat strings "player1|player2" - NO nested arrays for Firestore
       const newPairingStrings = duos.map(d => pairingToString(d.players));
       await updateTournament(id, {
         currentRound: { duos: plainDuos, matchResults: [], phase: 'playing' },
@@ -268,6 +290,64 @@ export default function ActiveTournament() {
     setSaving(false);
   }
 
+  // SWAP a past result: invert winner/loser, recalc scores, recalc next match
+  async function handleSwapResult(matchIndex) {
+    setSaving(true);
+    setError(null);
+    try {
+      const oldResults = [...matchResults];
+      const swapped = { ...oldResults[matchIndex] };
+      // Swap winner and loser
+      const newResult = { winner: swapped.loser, loser: swapped.winner };
+      const newResults = [...oldResults];
+      newResults[matchIndex] = newResult;
+
+      // Recalc scores: undo ALL old results from this round, redo with new
+      const newScores = recalcScores(tournament.scores, oldResults, newResults);
+
+      // For 6-player: matches after the swapped one depend on who won
+      // We need to invalidate results after the swap point and recalculate flow
+      // Truncate results after the swapped match (those are now invalid)
+      const truncatedResults = newResults.slice(0, matchIndex + 1);
+
+      // Recalc scores with only the truncated results
+      const truncScores = recalcScores(tournament.scores, oldResults, truncatedResults);
+
+      setMatchResults(truncatedResults);
+
+      const plainDuos = serializeDuos(duos);
+      const plainResults = serializeResults(truncatedResults);
+
+      const totalMatches = tournament.playerCount === 6 ? 3 : 6;
+      const isRoundComplete = truncatedResults.length >= totalMatches;
+
+      if (isRoundComplete) {
+        const roundData = { duos: plainDuos, matchResults: plainResults, roundNumber };
+        await updateTournament(id, {
+          scores: truncScores,
+          rounds: [...(tournament.rounds || []), roundData],
+          currentRound: { duos: plainDuos, matchResults: plainResults, phase: 'round-end' }
+        });
+        setTournament(prev => ({ ...prev, scores: truncScores, rounds: [...(prev.rounds || []), roundData] }));
+        setPhase('round-end');
+      } else {
+        await updateTournament(id, {
+          scores: truncScores,
+          currentRound: { duos: plainDuos, matchResults: plainResults, phase: 'playing' }
+        });
+        setTournament(prev => ({ ...prev, scores: truncScores }));
+        const nextMatch = tournament.playerCount === 6
+          ? getNextMatch6({ duos }, truncatedResults)
+          : getNextMatch8({ duos }, truncatedResults);
+        setCurrentMatch(nextMatch);
+      }
+    } catch (e) {
+      console.error('Swap error:', e);
+      setError('Error al corregir resultado: ' + e.message);
+    }
+    setSaving(false);
+  }
+
   async function handleContinue() {
     setRoundNumber(prev => prev + 1);
     setPhase('sorteo');
@@ -320,22 +400,42 @@ export default function ActiveTournament() {
           <Leaderboard scores={tournament.scores} small />
         </div>
       )}
-      {phase === 'playing' && matchResults.length > 0 && (
-        <div className="mb-24">
-          <div className="section-title" style={{ fontSize: '1rem' }}>Partidos jugados</div>
-          <div className="flex flex-col gap-8">
-            {matchResults.map((r, i) => <CompletedMatch key={i} result={r} index={i} />)}
-          </div>
-        </div>
-      )}
+
       {phase === 'sorteo' && duos.length > 0 && (
         <SorteoView duos={duos} onReshuffle={handleReshuffle} onConfirm={handleConfirmSorteo} reshuffleCount={reshuffleCount} saving={saving} />
       )}
+
       {phase === 'playing' && currentMatch && (
         <MatchView match={currentMatch} onWinner={handleWinner} matchNumber={matchResults.length + 1} totalMatches={totalMatches} disabled={saving} />
       )}
+
+      {phase === 'playing' && matchResults.length > 0 && (
+        <div className="mt-24">
+          <div className="section-title" style={{ fontSize: '1rem' }}>Partidos jugados</div>
+          <div className="text-xs text-muted mb-8" style={{ opacity: 0.6 }}>Tocá el perdedor para corregir el resultado</div>
+          <div className="flex flex-col gap-8">
+            {matchResults.map((r, i) => (
+              <CompletedMatch key={i} result={r} index={i} onSwap={handleSwapResult} disabled={saving} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {phase === 'round-end' && (
-        <RoundEndView scores={tournament.scores} onContinue={handleContinue} onFinish={handleFinish} roundNumber={roundNumber} />
+        <>
+          <RoundEndView scores={tournament.scores} onContinue={handleContinue} onFinish={handleFinish} roundNumber={roundNumber} />
+          {matchResults.length > 0 && (
+            <div className="mt-24">
+              <div className="section-title" style={{ fontSize: '1rem' }}>Resultados de la ronda</div>
+              <div className="text-xs text-muted mb-8" style={{ opacity: 0.6 }}>Tocá el perdedor para corregir antes de continuar</div>
+              <div className="flex flex-col gap-8">
+                {matchResults.map((r, i) => (
+                  <CompletedMatch key={i} result={r} index={i} onSwap={handleSwapResult} disabled={saving} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
