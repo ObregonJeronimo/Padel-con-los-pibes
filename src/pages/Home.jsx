@@ -35,14 +35,18 @@ export default function Home() {
             <button
               className="card w-full"
               onClick={() => navigate(`/torneo/${activeTournament.id}`)}
-              style={{ textAlign: 'left', cursor: 'pointer', borderColor: 'var(--accent)', boxShadow: '0 0 20px rgba(232,255,71,0.08)' }}
+              style={{ textAlign: 'left', cursor: 'pointer', borderColor: 'var(--accent)', boxShadow: '0 0 24px rgba(232,255,71,0.12)', padding: '20px' }}
             >
               <div className="flex items-center justify-between mb-8">
                 <span className="phase-label current">⚡ En curso</span>
                 <span className="text-xs text-muted">{activeTournament.playerCount} jugadores</span>
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', letterSpacing: '1px' }}>Torneo activo</div>
-              <div className="text-xs text-muted mt-8">Tocá para continuar →</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', letterSpacing: '1.5px', color: 'var(--accent)' }}>
+                🏓 TORNEO ACTIVO
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--green)', marginTop: '8px', fontWeight: 600 }}>
+                Tocá para continuar →
+              </div>
             </button>
           </div>
         )}
