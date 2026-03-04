@@ -54,7 +54,7 @@ function MatchView({ match, onWinner, matchNumber, totalMatches, disabled }) {
 
 function CompletedMatch({ result, index, onSwap, disabled }) {
   return (
-    <div className="match-card completed animate-fade" style={{ animationDelay: `${index * 0.05}s`, opacity: 1 }}>
+    <div className="match-card completed animate-fade" style={{ animationDelay: `${index * 0.05}s` }}>
       <div className="flex items-center justify-between mb-8">
         <span className="phase-label done">✓ Partido {index + 1}</span>
         <span className="text-xs text-muted" style={{ opacity: 0.5 }}>tocá para corregir</span>
@@ -70,7 +70,7 @@ function CompletedMatch({ result, index, onSwap, disabled }) {
         <button
           className="duo-card loser"
           onClick={() => !disabled && onSwap(index)}
-          style={{ padding: '10px 12px', opacity: 0.7, cursor: disabled ? 'not-allowed' : 'pointer' }}
+          style={{ padding: '10px 12px', cursor: disabled ? 'not-allowed' : 'pointer' }}
           title="Tocá para cambiar el ganador"
         >
           <div className="text-xs" style={{ color: 'var(--red)', marginBottom: '4px' }}>Perdió</div>
@@ -288,45 +288,50 @@ export default function ActiveTournament() {
     setSaving(false);
   }
 
+  // Swap result: just invert winner/loser for THAT match, keep all other matches intact
   async function handleSwapResult(matchIndex) {
     setSaving(true);
     setError(null);
     try {
       const oldResults = [...matchResults];
-      const swapped = { ...oldResults[matchIndex] };
+      const swapped = oldResults[matchIndex];
       const newResult = { winner: swapped.loser, loser: swapped.winner };
       const newResults = [...oldResults];
       newResults[matchIndex] = newResult;
 
-      const truncatedResults = newResults.slice(0, matchIndex + 1);
-      const truncScores = recalcScores(tournament.scores, oldResults, truncatedResults);
+      // Recalc scores: undo ALL old results from this round, redo with corrected results
+      const newScores = recalcScores(tournament.scores, oldResults, newResults);
 
-      setMatchResults(truncatedResults);
+      setMatchResults(newResults);
 
       const plainDuos = serializeDuos(duos);
-      const plainResults = serializeResults(truncatedResults);
+      const plainResults = serializeResults(newResults);
 
       const totalMatches = tournament.playerCount === 6 ? 3 : 6;
-      const isRoundComplete = truncatedResults.length >= totalMatches;
+      const isRoundComplete = newResults.length >= totalMatches;
 
       if (isRoundComplete) {
-        const roundData = { duos: plainDuos, matchResults: plainResults, roundNumber };
+        // Update the last round in rounds array (don't add a new one)
+        const updatedRounds = [...(tournament.rounds || [])];
+        if (updatedRounds.length > 0 && phase === 'round-end') {
+          updatedRounds[updatedRounds.length - 1] = { duos: plainDuos, matchResults: plainResults, roundNumber };
+        }
         await updateTournament(id, {
-          scores: truncScores,
-          rounds: [...(tournament.rounds || []), roundData],
+          scores: newScores,
+          rounds: updatedRounds,
           currentRound: { duos: plainDuos, matchResults: plainResults, phase: 'round-end' }
         });
-        setTournament(prev => ({ ...prev, scores: truncScores, rounds: [...(prev.rounds || []), roundData] }));
+        setTournament(prev => ({ ...prev, scores: newScores, rounds: updatedRounds }));
         setPhase('round-end');
       } else {
         await updateTournament(id, {
-          scores: truncScores,
+          scores: newScores,
           currentRound: { duos: plainDuos, matchResults: plainResults, phase: 'playing' }
         });
-        setTournament(prev => ({ ...prev, scores: truncScores }));
+        setTournament(prev => ({ ...prev, scores: newScores }));
         const nextMatch = tournament.playerCount === 6
-          ? getNextMatch6({ duos }, truncatedResults)
-          : getNextMatch8({ duos }, truncatedResults);
+          ? getNextMatch6({ duos }, newResults)
+          : getNextMatch8({ duos }, newResults);
         setCurrentMatch(nextMatch);
       }
     } catch (e) {
